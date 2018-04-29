@@ -18,90 +18,38 @@
   <script>
     var tot_pixel= 256;
     var height = 150;
-    function arr_init(){
-      var array = new Array(256);
-      array.fill(0);
-      return array
-    }
-
-    function convertToPercent(pixel_set){
-      var new_pixel=arr_init();
-      var max_pixel = Math.max.apply(null,pixel_set);
-      for(var i=0;i<256;i++){
-        new_pixel[i] = pixel_set[i]/max_pixel;
-      }
-      console.log(new_pixel)
-      return new_pixel;
-    }
-    function draw_hist(context,pixel_set,color_code,y){
-      context.beginPath();
-      var fin_pix = convertToPercent (pixel_set)
-      for(var i=0;i<256;i++){
-        context.moveTo(10+i,y);
-        context.lineTo(10+i,y-fin_pix[i]*100);
-      }
-      context.strokeStyle=color_code;
-      context.stroke();
-    }
-    function set_text(context,text,font,x,y){
-      context.font = font;
-      context.fillText(text,x,y);
-      context.stroke();
-    }
-    //Draw the corrdinate system
-    function coordinate_line(context,x,y,length,width){
-      context.moveTo(x,length+y);
-      context.lineTo(x,y);
-      context.moveTo(x,length+y);
-      context.lineTo(x+width,length+y);
-      context.stroke();
-    }
-    var r= arr_init();
-    var g= arr_init();
-    var b= arr_init();
     var img = new Image();
 
-    img.src = "./sample.jpg"
+    img.src = "./sample4.jpg"
     img.onload = function() {
       var c=document.getElementById('my_canvas');
       var ctx=c.getContext("2d");
       ctx.drawImage(img,0,0,1024,724);
-      var imageData=ctx.getImageData(0,0,c.width,c.height);
 
-      for (var i=0;i<imageData.data.length;i+=4){
-        r[imageData.data[i]]++;
-        g[imageData.data[i+1]]++;
-        b[imageData.data[i+2]]++;
-      }
       var color_his_box = document.getElementById("color_his");
       var red_hist= new Canvas("red_hist",280,180);
       var green_hist=new Canvas("green_hist",280,180);
       var blue_hist=new Canvas("blue_hist",280,180);
 
-
+      var imageFrame = new ImageFrame(ctx,c.width,c.height);
+      imageFrame.collectRGBData();
       red_hist.drawCoordinateLine(10,10,260,140);
       blue_hist.drawCoordinateLine(10,10,260,140);
       green_hist.drawCoordinateLine(10,10,260,140);
-      // coordinate_line(red_cxt,10,10,140,260);
-      // coordinate_line(blue_cxt,10,10,140,260);
-      // coordinate_line(green_cxt,10,10,140,260);
-      red_hist.drawImgHist(r,"#ff0000",height);
-      blue_hist.drawImgHist(b,"#0000ff",height);
-      green_hist.drawImgHist(g,"#00ff00",height);
 
-      // draw_hist(red_cxt,r,"#ff0000",height);
-      // draw_hist(green_cxt,g,"#00ff00",height);
-      // draw_hist(blue_cxt,b,"#0000ff",height);
+      red_hist.drawImgHist(imageFrame.getRedPixelData(),"#ff0000",height);
+      blue_hist.drawImgHist(imageFrame.getBluePixelData(),"#0000ff",height);
+      green_hist.drawImgHist(imageFrame.getGreenPixelData(),"#00ff00",height);
+
       var font = "12px Arial"
       red_hist.setHistText("Red Histogram",font,95,170);
       green_hist.setHistText("Green Histogram",font,95,170);
       blue_hist.setHistText("Blue Histogram",font,95,170);
-      
+
       color_his_box.appendChild(red_hist.canvas);
       color_his_box.appendChild(green_hist.canvas);
       color_his_box.appendChild(blue_hist.canvas);
       //Create the new canvas photo
-      var gray_img=arr_init();
       var new_row= document.createElement('div');
       new_row.className="row";
       //Create Picture container
@@ -126,22 +74,40 @@
       new_his_box.appendChild(new_hist.canvas);
       //Transform the color image to black image
       var gray_ctx=new_canvas.getContext("2d");
-      var new_imageData=gray_ctx.getImageData(0,0,new_canvas.width,new_canvas.height);
-      for (var i=0;i<imageData.data.length;i+=4){
-        var gray_pix_val= Math.round((29.9*imageData.data[i]+58.7*imageData.data[i+1]+11.4*imageData.data[i+2])/100);
-        new_imageData.data[i]=gray_pix_val;
-        new_imageData.data[i+1]=gray_pix_val;
-        new_imageData.data[i+2]=gray_pix_val;
-        new_imageData.data[i+3]=256;
-        gray_img[gray_pix_val]++;
-      }
-      gray_ctx.putImageData(new_imageData,0,0);
 
-      new_hist.drawImgHist(gray_img,"#000000",height);
+      var new_imageData= imageFrame.convertToGrayScale(gray_ctx,new_canvas.width,new_canvas.height);
+      var gray=imageFrame.convertToGrayScale(gray_ctx,new_canvas.width,new_canvas.height);
+      gray.convertToImgArray();
+      new_imageData.convertToImgArray();
+      var blur_result = gray.edgeDetection([[1/9,1/9,1/9],[1/9,1/9,1/9],[1/9,1/9,1/9]],0);
+      // var edge_result=new_imageData.edgeDetection([[1/9,1/9,1/9],[1/9,1/9,1/9],[1/9,1/9,1/9]],0)
+      var edge_result = new_imageData.edgeDetection([[-1,-1,-1],[-1,8,-1],[-1,-1,-1]],1);
+      gray_ctx.putImageData(blur_result.getImageData(),0,0);
+      new_hist.drawImgHist(blur_result.getGrayPixelData(),"#000000",height);
       new_hist.setHistText("Gray Histogram",font,95,170);
       new_hist.drawCoordinateLine(10,10,260,140);
 
       document.getElementsByTagName('body')[0].appendChild(new_row);
+      var binary_row = document.createElement('div');
+      binary_row.className="row";
+      //Create the Picture container
+      var binary_pic_box = document.createElement('div');
+      binary_pic_box.className="col l9";
+      binary_row.appendChild(binary_pic_box);
+      var binary_his_box = document.createElement('div');
+      binary_his_box.className="col l3";
+      binary_pic_box.appendChild(binary_his_box);
+      //Create canvas
+      var binary_canvas = document.createElement('canvas');
+      binary_canvas.id = "binary_canvas"
+      binary_canvas.width = 1024;
+      binary_canvas.height = 724;
+      binary_pic_box.appendChild(binary_canvas);
+
+      var binary_ctx =binary_canvas.getContext('2d');
+      var binary_imageData = new_imageData.grayToBinary(binary_ctx,100,binary_canvas.width,binary_canvas.height);
+      binary_ctx.putImageData(edge_result.getImageData(),0,0);
+      document.getElementsByTagName('body')[0].appendChild(binary_row);
     }
   </script>
 
